@@ -23,8 +23,8 @@ connectionProperties = {
 # COMMAND ----------
 
 empl = "(SELECT TOP (1000) * FROM [dbo].[Employee]) emp_alias"
-df = spark.read.jdbc(url=jdbcUrl, table=empl, properties=connectionProperties)
-df.createOrReplaceTempView("source") 
+df_empl = spark.read.jdbc(url=jdbcUrl, table=empl, properties=connectionProperties)
+df_empl.createOrReplaceTempView("source") 
 
 
 
