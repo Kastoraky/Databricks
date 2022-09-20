@@ -24,15 +24,18 @@ df_dataS.createOrReplaceTempView("dataS")
 # COMMAND ----------
 
 # DBTITLE 1,Import data to Azure SQL Database 
-# df_IImportTable = spark.sql('''
+#df_IImportTable = spark.sql('''
+#                                with myCTE as (
 #                                SELECT * From source
 #                                Where LastName='Kostov'
+#                                )
+#                                SELECT * FROM myCTE
 # ''')
-
-# df_IImportTable.write \
-# .format("jdbc")\
-# .option("url", jdbcUrl)\
-# .option("dbtable", "KostovImports")\
-# .option("user", jdbcUsername)\
-# .option("password", jdbcPassword)\
-# .save()
+#
+#df_IImportTable.write \
+#.format("jdbc")\
+#.option("url", jdbcUrl)\
+#.option("dbtable", "KostovImports")\
+#.option("user", jdbcUsername)\
+#.option("password", jdbcPassword)\
+#.save()
