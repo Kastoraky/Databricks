@@ -22,6 +22,10 @@ connectionProperties = {
 
 # COMMAND ----------
 
+# MAGIC %run ./Azure_Database_Connection
+
+# COMMAND ----------
+
 empl = "(SELECT TOP (1000) * FROM [dbo].[Employee]) emp_alias"
 df_empl = spark.read.jdbc(url=jdbcUrl, table=empl, properties=connectionProperties)
 df_empl.createOrReplaceTempView("source") 
