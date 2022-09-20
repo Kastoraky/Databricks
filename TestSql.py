@@ -17,9 +17,30 @@ df_dataS.createOrReplaceTempView("dataS")
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC 
-# MAGIC SELECT * FROM dataS;
+#%sql
+#CREATE or REplace table delta_db.MyDeltaTable (
+#                                          FirstName	STRING,
+#                                          LastName	STRING,
+#                                          Date	TIMESTAMP,
+#                                          Amount INT,
+#                                          Idate	TIMESTAMP
+#)
+#USING DELTA
+#LOCATION '/FileStore/delta_db/MyDeltaTable'
+
+# COMMAND ----------
+
+#df_res = spark.sql('''
+#                    SELECT 
+#                    MAX(VERSION)-2 as Version
+#                    FROM
+#                    (DESCRIBE HISTORY delta_db.MyDeltaTable)
+#''').collect()[0][0]
+
+# COMMAND ----------
+
+#df_getData = spark.sql(" SELECT * FROM delta_db.MyDeltaTable VERSION AS OF {}".format(df_res))
+#display(df_getData)
 
 # COMMAND ----------
 
