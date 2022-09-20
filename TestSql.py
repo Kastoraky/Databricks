@@ -1,27 +1,4 @@
 # Databricks notebook source
-from pyspark.sql import *
-import pandas as pd
-
-# COMMAND ----------
-
-jdbcHostname = "mypersonaldatabaseserver.database.windows.net"
-jdbcDatabase = "Dictionary"
-jdbcPort = 1433
-jdbcUsername = "Kastoraky"
-jdbcPassword = "B.k.12#$56"
-jdbcUrl = "jdbc:sqlserver://{0}:{1};database={2};user={3};password={4}".format(jdbcHostname, jdbcPort, jdbcDatabase, jdbcUsername, jdbcPassword)
-
-# COMMAND ----------
-
-jdbcUrl = "jdbc:sqlserver://{0}:{1};database={2}".format(jdbcHostname, jdbcPort, jdbcDatabase)
-connectionProperties = {
-  "user" : jdbcUsername,
-  "password" : jdbcPassword,
-  "driver" : "com.microsoft.sqlserver.jdbc.SQLServerDriver"
-}
-
-# COMMAND ----------
-
 # MAGIC %run ./Azure_Database_Connection
 
 # COMMAND ----------
@@ -46,5 +23,17 @@ df_dataS.createOrReplaceTempView("dataS")
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT * FROM fpa.Test2
+df_IImportTable = spark.sql('''
+                                SELECT * From source
+                                Where LastName='Kostov'
+''')
+
+# COMMAND ----------
+
+df_IImportTable.write \
+.format("jdbc")\
+.option("url", jdbcUrl)\
+.option("dbtable", "KostovImports")\
+.option("user", jdbcUsername)\
+.option("password", jdbcPassword)\
+.save()
