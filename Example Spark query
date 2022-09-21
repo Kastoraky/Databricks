@@ -1,0 +1,215 @@
+GRAB THE BASE DATA
+brand=spark.table ("fpa.brand_translation")
+interco=spark.table ("dbimports.fpa_fpa_interco_affiliate_mapping")
+device_class_lookup=spark.table ("fpa.device_class_lookup")
+aff_fee=spark.table ("dbimports.fin_hotelresafffee")
+tr_det=spark.table ("fpa.transactions_detail")
+app_mapping=spark.table ("fpa.app_mktg_mapping")
+
+#FORMAT THE BASE DATA
+brand = (brand.
+			select(
+			brand.affiliate_id.alias('aid'))).withColumn("is_brand",lit("brand"))
+
+interco = (interco.
+				select(
+				interco.affiliate_id.alias('interco_aid'),
+				F.concat(lit('interco_'),F.lower(interco.category)).alias('name')
+				)
+			)
+
+
+device_class_lookup = (device_class_lookup.
+							select(
+							device_class_lookup.hotelreservation_id,
+							F.when(device_class_lookup.device_class=='mobile', 'mobile').otherwise('desktop').alias('device_class')
+							)			
+						)
+
+aff_fee = (aff_fee.
+			select(
+			aff_fee.hotelreservation_id,
+			(aff_fee.aff_fee_total_fee * aff_fee.partner_currencyrate).alias('aff_fee_euro')
+			)
+		)
+
+tr_det= (tr_det.
+			select(
+			tr_det.hotelreservation_id.alias('id'),
+      tr_det.transaction_id.alias('trans_id'),
+			F.to_date(tr_det.created).alias('day_created'),
+			F.date_sub(F.next_day(F.to_date(tr_det.created), "monday"), 1).alias('week_created'),
+			tr_det.checkin.alias('day_checkin'),
+			F.date_sub(F.next_day(tr_det.checkin, "monday"), 1).alias('week_checkin'),
+			tr_det.checkout.alias('day_checkout'),
+			F.date_sub(F.next_day(tr_det.checkout, "monday"), 1).alias('week_checkout'),
+			F.to_date(tr_det.date_cancelled).alias('day_cancelled'),
+			F.date_sub(F.next_day(F.to_date(tr_det.date_cancelled), "monday"), 1).alias('week_cancelled'),
+			tr_det.affiliate_id,
+			tr_det.partner_id,
+			tr_det.partner_channel_id.alias('channel_id'),
+			tr_det.partner_channel_name.alias('channel_mapping'),
+			F.when(tr_det.partner_parent_id==404815, 'sppc_tripadvisor').otherwise(
+			  F.when(tr_det.partner_parent_id==413084, 'sppc_trivago').otherwise(
+			  F.when(tr_det.partner_parent_id==423463, 'sppc_gha').otherwise(
+			  F.when(tr_det.partner_parent_id==412968, 'sppc_kayak').otherwise('sppc_other')))).alias('partner_'),
+			F.when(tr_det.status=='ok', 'ok').otherwise('cancelled').alias('status'),
+			tr_det.roomnights,
+			tr_det.price_euro,
+			tr_det.commission_amount_euro,
+      tr_det.is_bbasic
+			)
+			.where(
+			(tr_det.status.isin(['test','fraudulent'])==False) &
+			(
+			(F.to_date(tr_det.created) >= F.date_sub(F.current_date(),1600)) |
+			(F.to_date(tr_det.checkin) >= F.date_sub(F.current_date(),1600)) |
+			(F.to_date(tr_det.checkout) >= F.date_sub(F.current_date(),1600)) |
+			(F.to_date(tr_det.date_cancelled) >= F.date_sub(F.current_date(),1600))
+			)
+			)
+		)
+
+app_mapping = (app_mapping.
+			select(
+			app_mapping.affiliate_id,
+			app_mapping.app_partner_type	,
+      app_mapping.china_bu_toggle		
+			)
+		)		
+		
+#EXTRACT MISSING BREAKDOWN TRANSACITONS
+all_data = (tr_det
+				.join(device_class_lookup, device_class_lookup.hotelreservation_id==tr_det.id, 'left_outer')
+				.join(interco, interco.interco_aid==tr_det.affiliate_id, "left_outer")
+				.join(brand, brand.aid==tr_det.affiliate_id, "left_outer")
+				.join(aff_fee, aff_fee.hotelreservation_id==tr_det.id, "left_outer")
+				.join(app_mapping, app_mapping.affiliate_id==tr_det.affiliate_id, "left_outer")
+			)
+			
+guidance_base = (all_data.select(
+						all_data.id, 
+						all_data.trans_id,
+						all_data.price_euro,
+						all_data.commission_amount_euro,
+						all_data.roomnights,
+						all_data.status,
+						all_data.channel_mapping,
+						all_data.partner_id,
+						tr_det.affiliate_id,
+						all_data.day_created,
+						all_data.day_checkin,
+						all_data.day_checkout,
+						all_data.day_cancelled,
+						F.when((all_data.channel_mapping=='Direct')&(app_mapping.app_partner_type=='direct_app_mktg')&(app_mapping.china_bu_toggle=='0'), 'direct_app_mktg').otherwise(
+						F.when((all_data.channel_mapping=='Direct')&(all_data.channel_id==20), 'direct_mm').otherwise(
+					    F.when((all_data.channel_mapping=='Direct')&(all_data.channel_id==17), 'direct_seo').otherwise(
+					    F.when(all_data.channel_mapping=='Direct', 'direct_other').otherwise(
+					    F.when((all_data.channel_mapping=='PPC')&(app_mapping.app_partner_type=='ppc_app_mktg')&(app_mapping.china_bu_toggle=='0'), 'ppc_app_mktg').otherwise(
+					    F.when((all_data.channel_mapping=='PPC')&(brand.is_brand=='brand')&(all_data.device_class=='mobile'), 'ppc_mobile_brand').otherwise(
+					    F.when((all_data.channel_mapping=='PPC')&(brand.is_brand=='brand')&(all_data.device_class=='desktop'), 'ppc_desktop_brand').otherwise(
+					    F.when(((all_data.channel_mapping=='PPC')&(F.isnull(brand.aid))&(all_data.device_class=='mobile'))| ((all_data.is_bbasic==1) & (all_data.channel_mapping=='PPC')), 'ppc_mobile_nonbrand').otherwise(
+					    F.when((all_data.channel_mapping=='PPC')&(F.isnull(brand.aid))&(all_data.device_class=='desktop'), 'ppc_desktop_nonbrand').otherwise(
+					    F.when(all_data.channel_mapping=='ShopPPC', all_data.partner_).otherwise(
+					    F.when((all_data.channel_mapping=='Strat Part')&(app_mapping.app_partner_type=='sp_app_mktg')&(app_mapping.china_bu_toggle=='0'), 'sp_app_mktg').otherwise(
+					    F.when(all_data.channel_mapping=='Strat Part', 'strat_part').otherwise(
+					    F.when(all_data.channel_mapping=='Interco', interco.name).otherwise(
+					    F.when(all_data.channel_mapping=='OTHER', 'retargeting').otherwise(
+						'missing')))))))))))))).alias('breakdown'),
+						F.current_timestamp().alias('ran_on'))
+                 )
+
+			   
+array = [
+         'direct_app_mktg'
+        ,'direct_other'
+        ,'direct_seo'
+        ,'direct_mm'
+		,'ppc_app_mktg'
+        ,'ppc_mobile_brand'
+        ,'ppc_desktop_brand'
+        ,'ppc_mobile_nonbrand'
+        ,'ppc_desktop_nonbrand'
+        ,'sppc_trivago'
+        ,'sppc_tripadvisor'
+        ,'sppc_kayak'
+        ,'sppc_gha'
+        ,'sppc_other'
+		,'sp_app_mktg'
+        ,'strat_part'
+        ,'retargeting'
+        ,'interco_priceline'
+        ,'interco_agoda'
+        ,'interco_ppn'
+        ,'interco_rocketmiles']		
+
+		
+missing_tr = guidance_base.filter(guidance_base.breakdown.isin(*array) == False)	
+missing_tr_final = missing_tr.drop('breakdown').repartition(1)
+
+missing_tr_list = (missing_tr_final
+           .agg(F.concat_ws(", ", F.collect_list(missing_tr_final.id)).alias('my_list'))).repartition(1)
+
+
+#EXTRACT HIGH VALUE TRANSACTIONS
+
+tr_det_metrics = tr_det.withColumn("adr", F.col("price_euro")/F.col("roomnights"))
+suspicious = (tr_det_metrics
+					.select(tr_det_metrics.adr,
+							tr_det_metrics.price_euro,
+							tr_det_metrics.commission_amount_euro,
+							tr_det_metrics.roomnights,
+							tr_det_metrics.status,
+							tr_det_metrics.channel_mapping,
+							tr_det_metrics.partner_id,
+							tr_det_metrics.affiliate_id,
+							tr_det_metrics.day_created,
+							tr_det_metrics.day_checkin,
+							tr_det_metrics.day_checkout,
+							tr_det_metrics.day_cancelled,
+							tr_det_metrics.id,
+							tr_det_metrics.trans_id,
+							F.current_timestamp().alias('ran_on')
+							)
+							.where(tr_det_metrics.adr > 25000)).repartition(1)
+							
+suspicious2 = suspicious.orderBy('adr',ascending=False)
+
+one_mil = (suspicious2
+           .where(suspicious2.adr > 999999)
+           .agg(F.concat_ws(", ", F.collect_list(suspicious2.id)).alias('my_list'))).repartition(1)
+		   
+quarter_to_mil = (suspicious2
+                    .where((suspicious2.adr < 999999) & (suspicious2.adr > 249999))
+                    .agg(F.concat_ws(", ", F.collect_list(suspicious2.id)).alias('list'))).repartition(1)
+                    
+#WRITE TABLES		   
+spark.sql('DROP TABLE IF EXISTS fpa.guidance_missing_channels_temp')
+missing_tr_final.registerTempTable('guidance_missing_channels_temp')
+spark.sql('CREATE TABLE fpa.guidance_missing_channels_temp STORED AS ORC AS SELECT * FROM guidance_missing_channels_temp')
+spark.sql('DROP TABLE IF EXISTS fpa.guidance_missing_channels')
+spark.sql('ALTER TABLE fpa.guidance_missing_channels_temp RENAME TO fpa.guidance_missing_channels')
+
+spark.sql('DROP TABLE IF EXISTS fpa.guidance_checks_one_mil_temp')
+one_mil.registerTempTable('guidance_checks_one_mil_temp')
+spark.sql('CREATE TABLE fpa.guidance_checks_one_mil_temp STORED AS ORC AS SELECT * FROM guidance_checks_one_mil_temp')
+spark.sql('DROP TABLE IF EXISTS fpa.guidance_checks_one_mil')
+spark.sql('ALTER TABLE fpa.guidance_checks_one_mil_temp RENAME TO fpa.guidance_checks_one_mil')
+
+spark.sql('DROP TABLE IF EXISTS fpa.guidance_missing_tr_list_temp')
+missing_tr_list.registerTempTable('guidance_missing_tr_list_temp')
+spark.sql('CREATE TABLE fpa.guidance_missing_tr_list_temp STORED AS ORC AS SELECT * FROM guidance_missing_tr_list_temp')
+spark.sql('DROP TABLE IF EXISTS fpa.guidance_missing_tr_list')
+spark.sql('ALTER TABLE fpa.guidance_missing_tr_list_temp RENAME TO fpa.guidance_missing_tr_list')
+
+spark.sql('DROP TABLE IF EXISTS fpa.guidance_checks_quarter_to_mil_temp')
+quarter_to_mil.registerTempTable('guidance_checks_quarter_to_mil_temp')
+spark.sql('CREATE TABLE fpa.guidance_checks_quarter_to_mil_temp STORED AS ORC AS SELECT * FROM guidance_checks_quarter_to_mil_temp')
+spark.sql('DROP TABLE IF EXISTS fpa.guidance_checks_quarter_to_mil')
+spark.sql('ALTER TABLE fpa.guidance_checks_quarter_to_mil_temp RENAME TO fpa.guidance_checks_quarter_to_mil')
+
+spark.sql('DROP TABLE IF EXISTS fpa.guidance_suspicious_temp')
+suspicious2.registerTempTable('guidance_suspicious_temp')
+spark.sql('CREATE TABLE fpa.guidance_suspicious_temp STORED AS ORC AS SELECT * FROM guidance_suspicious_temp')
+spark.sql('DROP TABLE IF EXISTS fpa.guidance_suspicious')
+spark.sql('ALTER TABLE fpa.guidance_suspicious_temp RENAME TO fpa.guidance_suspicious')
