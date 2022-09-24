@@ -1,0 +1,18 @@
+#import the pymssql library
+import pymssql
+
+#Create a variable for the key vault - to hide the password
+password = TokenLibrary.getSecret('AzureSqlKastoraky', 'AzureSqlPassword')
+
+#create connection to MS SQL and execute the sal query agains the server
+conn = pymssql.connect(server='mypersonaldatabaseserver.database.windows.net', user='Kastoraky', password=password, database='Dictionary')
+cursor = conn.cursor()
+cursor.execute("""CREATE TABLE MyFUCKINGTABLE (
+                                                PersonID int,
+                                                LastName varchar(255),
+                                                FirstName varchar(255),
+                                                Address varchar(255),
+                                                City varchar(255)
+                                            );""")
+conn.commit()
+conn.close()
