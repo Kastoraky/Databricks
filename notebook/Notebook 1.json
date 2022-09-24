@@ -17,7 +17,7 @@
 				"spark.dynamicAllocation.enabled": "false",
 				"spark.dynamicAllocation.minExecutors": "2",
 				"spark.dynamicAllocation.maxExecutors": "2",
-				"spark.autotune.trackingId": "d825b1f1-e3b9-4cf4-9ee2-074ec8e5d779"
+				"spark.autotune.trackingId": "bd34db74-8c94-4c03-9ae2-ee0452a9699e"
 			}
 		},
 		"metadata": {
@@ -50,10 +50,16 @@
 		"cells": [
 			{
 				"cell_type": "code",
+				"metadata": {
+					"microsoft": {
+						"language": "sparksql"
+					}
+				},
 				"source": [
-					""
+					"%%sql\r\n",
+					"CREATE table student(Name int)"
 				],
-				"execution_count": null
+				"execution_count": 8
 			}
 		]
 	}
