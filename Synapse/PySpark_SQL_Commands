@@ -1,0 +1,41 @@
+
+# Create DELTA Table
+%sql
+CREATE or REplace table delta_db.MyDeltaTable (
+                                          FirstName	STRING,
+                                          LastName	STRING,
+                                          Date	TIMESTAMP,
+                                          Amount INT,
+                                          Idate	TIMESTAMP
+)
+USING DELTA
+LOCATION '/FileStore/delta_db/MyDeltaTable'
+
+# Get the max Version of the Delta Table
+
+df_res = spark.sql('''
+                    SELECT 
+                    MAX(VERSION)-2 as Version
+                    FROM
+                    (DESCRIBE HISTORY delta_db.MyDeltaTable)
+''').collect()[0][0]
+df_getData = spark.sql(" SELECT * FROM delta_db.MyDeltaTable VERSION AS OF {}".format(df_res))
+display(df_getData)
+
+
+# Import data to Azure SQL Database 
+df_IImportTable = spark.sql('''
+                                with myCTE as (
+                                SELECT * From source
+                                Where LastName='Kostov'
+                                )
+                                SELECT * FROM myCTE
+ ''')
+
+df_IImportTable.write \
+.format("jdbc")\
+.option("url", jdbcUrl)\
+.option("dbtable", "KostovImports")\
+.option("user", jdbcUsername)\
+.option("password", jdbcPassword)\
+.save()
