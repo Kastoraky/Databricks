@@ -20,3 +20,10 @@ connectionProperties = {
   "password" : jdbcPassword,
   "driver" : "com.microsoft.sqlserver.jdbc.SQLServerDriver"
 }
+
+# COMMAND ----------
+# Declare the table from SQL Server that wants to be used in the notebook with %sql
+
+empl = "(SELECT TOP (1000) * FROM [dbo].[Employee]) emp_alias"
+df_empl = spark.read.jdbc(url=jdbcUrl, table=empl, properties=connectionProperties)
+df_empl.createOrReplaceTempView("source") 
