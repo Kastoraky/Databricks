@@ -1,0 +1,49 @@
+# Create function to parse the mssparkutils result to table
+
+def convertfiles2df(files):
+    """
+    Converts FileInfo object into Pandas DataFrame to enable display
+    """
+    # Disable Arrow-based transfers since the Pandas DataFrame is tiny
+    spark.conf.set("spark.sql.execution.arrow.enabled", "false")
+
+    schema = ['path','name','size']
+    df = pd.DataFrame([[getattr(i,j) for j in schema] for i in files], columns = schema).sort_values('path')
+    return(df)
+
+#Get the Source and Target Folders list of files
+
+fileListSource = convertfiles2df(mssparkutils.fs.ls('abfss://synapsefilesystem01@kastorakydatalake01.dfs.core.windows.net/Parque Test/'))
+fileListTarget = convertfiles2df(mssparkutils.fs.ls('abfss://synapsefilesystem01@kastorakydatalake01.dfs.core.windows.net/Parque Test2/'))
+
+#Create SQL views for the Source and Target
+
+spark.conf.set("spark.sql.execution.arrow.pyspark.enabled", "false") # Disable  the puspark arrow
+df_Source = spark.createDataFrame(fileListSource)
+df_Source.createOrReplaceGlobalTempView("source")
+df_Target = spark.createDataFrame(fileListTarget)
+df_Target.createOrReplaceGlobalTempView("target")
+
+#Compare the Source and Target and get the DELTA as result
+
+deltaFiles = spark.sql("""
+                            with sourceData as (
+                            SELECT 
+                            source.name as nameS,
+                            target.name as nameT
+                            FROM (Select name From global_temp.source) source
+                            left JOIN
+                            (SELECT name from global_temp.target) target
+                            on source.name=target.name
+                            )
+                            Select nameS From sourceData
+                            Where nameT is NULL;
+                        """)
+
+#Convert the SQL result to string
+deltaFiles = deltaFiles.select('nameS').rdd.flatMap(lambda x: x).collect()
+
+# Copy the files from Source to Target which do not exist in Target
+#Create Loop for each file
+for file in deltaFiles:
+  mssparkutils.fs.cp('abfss://synapsefilesystem01@kastorakydatalake01.dfs.core.windows.net/Parque Test/'+file, 'abfss://synapsefilesystem01@kastorakydatalake01.dfs.core.windows.net/Parque Test2/'+file, True)
